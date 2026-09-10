@@ -6,13 +6,27 @@ Requires **Node.js 22.20+**. Staged mode also requires Git and must run from the
 
 ## Install
 
-Install from this public Git repository with [pnpm's Git dependency support](https://pnpm.io/cli/add#install-from-git-repository):
+### Direct download with your existing npm registry
+
+Install the versioned public archive using [pnpm's remote tarball support](https://pnpm.io/package-sources#remote-tarball):
+
+```sh
+pnpm add -D https://github.com/andrii-artemenko-gen/skills-codereview-rules-management/archive/refs/tags/v0.1.0.tar.gz
+```
+
+This downloads the package over HTTPS and leaves your existing npm registry settings unchanged. It requires no GitHub Packages registry, registry scope mapping, or GitHub token. GitHub hosts the download; the package has no runtime dependencies.
+
+Commit the resulting `package.json` and `pnpm-lock.yaml`. Other contributors and CI can then use `pnpm install` with their existing registry setup. The generation scripts and hooks below work with this installation method.
+
+### Git dependency alternative
+
+You can also install with [pnpm's Git dependency support](https://pnpm.io/package-sources#git-repository):
 
 ```sh
 pnpm add -D github:andrii-artemenko-gen/skills-codereview-rules-management#v0.1.0
 ```
 
-The package is distributed through GitHub; the command does not assume an npm registry release.
+The `github:` prefix identifies a Git repository source; it does not configure the GitHub Packages registry. Both examples install the tagged repository version. The package is distributed through GitHub and is not currently published to the npm registry.
 
 ## Generate a document
 
@@ -70,6 +84,68 @@ Run it on **every commit**, independently of a staged-file glob trigger. This al
 The output is a generated artifact: local manual edits to it are replaced during synchronization. `--staged --check` checks the indexed output without modifying either the index or working files. Ordinary generation/check mode reads working files, including matching untracked files.
 
 Run `pnpm instructions:check` in CI after checkout as well, because developers can disable local hooks. A failed freshness check should fail the job. Generation checks verify synchronization; they do not evaluate the meaning or consistency of the instructions.
+
+## Review rules inside skills
+
+Keep each skill's review rules in `codereview.md` alongside its `SKILL.md`:
+
+```text
+.agents/skills/
+  example-a/
+    SKILL.md
+    codereview.md
+  example-b/
+    SKILL.md
+    codereview.md
+CODE_REVIEW_GUIDELINES.md        # generated
+```
+
+Use `.agents/skills/*/codereview.md` as the input pattern. Only these review documents are combined; `SKILL.md` and other supporting files are excluded. A skill without `codereview.md` contributes nothing. For nested skill directories, use `.agents/skills/**/codereview.md` instead.
+
+For pre-commit synchronization, the source documents must be tracked as regular files in the consuming repository. Staged mode reads their Git contents; it does not import files from an external or symlinked skill installation.
+
+After [installing the package](#install), add these scripts to the consuming repository's `package.json`:
+
+```json
+{
+  "scripts": {
+    "instructions:sync": "rules-sync --pattern '.agents/skills/*/codereview.md' --output CODE_REVIEW_GUIDELINES.md",
+    "instructions:stage": "pnpm instructions:sync --staged",
+    "instructions:check": "pnpm instructions:sync --check"
+  }
+}
+```
+
+Generate the initial document from your working files:
+
+```sh
+pnpm instructions:sync
+```
+
+Add the following to your existing `.husky/pre-commit`, after any tasks that edit source documents. Run it on every commit, outside lint-staged's file-pattern callbacks:
+
+```sh
+pnpm instructions:stage
+```
+
+Edit and stage the skill's `codereview.md`, then commit as usual. The hook regenerates and stages `CODE_REVIEW_GUIDELINES.md` from the same staged snapshot, including additions, renames, and deletions. Edit the skill files rather than the generated document. Keep both sources and generated output committed in the consuming repository.
+
+In CI, run `pnpm instructions:check` after checkout and dependency installation to reject a stale generated document. See [pre-commit synchronization](#pre-commit-synchronization) for partial staging and other hook managers.
+
+To have CodeRabbit apply this document across your repository, add this mapping to `.coderabbit.yaml`:
+
+```yaml
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: 'CODE_REVIEW_GUIDELINES.md'
+        applyTo: '**/*'
+```
+
+For [GitHub Copilot](#github-copilot), change `--output CODE_REVIEW_GUIDELINES.md` in `instructions:sync` to `--output .github/copilot-instructions.md`. CodeRabbit can read that same generated file using the [shared-file mapping below](#coderabbit), so both reviewers can consume one document. Keep the `.agents/skills/*/codereview.md` input pattern in either setup.
+
+The examples contain no private skill content. Your actual skill files and generated rules stay in your consuming repository; they do not need to be published with this utility.
 
 ## GitHub Copilot
 
