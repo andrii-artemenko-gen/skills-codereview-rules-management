@@ -16,7 +16,7 @@ pnpm add -D https://github.com/andrii-artemenko-gen/skills-codereview-rules-mana
 
 This downloads the package over HTTPS and leaves your existing npm registry settings unchanged. It requires no GitHub Packages registry, registry scope mapping, or GitHub token. GitHub hosts the download; the package has no runtime dependencies.
 
-Commit the resulting `package.json` and `pnpm-lock.yaml`. Other contributors and CI can then use `pnpm install` with their existing registry setup. The generation scripts and hooks below work with this installation method.
+Commit the resulting `package.json` and `pnpm-lock.yaml`. Other contributors and CI can then use `pnpm install` with their existing registry setup. The commands below work with this installation method.
 
 ### Git dependency alternative
 
@@ -52,25 +52,13 @@ Sources are sorted by path and included with a heading identifying each source. 
 
 ## Pre-commit synchronization
 
-Add scripts to the consuming repository:
-
-```json
-{
-  "scripts": {
-    "instructions:sync": "rules-sync --pattern 'rules/*/instructions.md' --output INSTRUCTIONS.md",
-    "instructions:stage": "pnpm instructions:sync --staged",
-    "instructions:check": "pnpm instructions:sync --check"
-  }
-}
-```
-
-For an existing [Husky](https://typicode.github.io/husky/) setup, add this to `.husky/pre-commit`, after any tasks that edit the input documents:
+Add the CLI call to your existing pre-commit pipeline, after tasks that edit the input documents, such as lint-staged:
 
 ```sh
-pnpm instructions:stage
+pnpm exec rules-sync --pattern 'rules/*/instructions.md' --output INSTRUCTIONS.md --staged
 ```
 
-Or call the same command from your existing Git hook manager. For a plain Git hook, place it in an executable `.git/hooks/pre-commit` file with a `#!/bin/sh` first line.
+For [Husky](https://typicode.github.io/husky/), keep the existing `.husky/pre-commit` entry point. If it delegates to a project-wide `pre-commit` command, add the call to that command's pipeline; otherwise, add it directly to the hook. The same approach works with other Git hook managers.
 
 Run it on **every commit**, independently of a staged-file glob trigger. This also repairs previously stale output and handles deleted or renamed sources. For example, lint-staged's default changed-file filter excludes deletions.
 
@@ -83,7 +71,7 @@ Run it on **every commit**, independently of a staged-file glob trigger. This al
 
 The output is a generated artifact: local manual edits to it are replaced during synchronization. `--staged --check` checks the indexed output without modifying either the index or working files. Ordinary generation/check mode reads working files, including matching untracked files.
 
-Run `pnpm instructions:check` in CI after checkout as well, because developers can disable local hooks. A failed freshness check should fail the job. Generation checks verify synchronization; they do not evaluate the meaning or consistency of the instructions.
+In CI after checkout and dependency installation, run the same CLI command with `--check` instead of `--staged`, because developers can disable local hooks. A failed freshness check should fail the job. Generation checks verify synchronization; they do not evaluate the meaning or consistency of the instructions.
 
 ## Review rules inside skills
 
@@ -104,33 +92,15 @@ Use `.agents/skills/*/codereview.md` as the input pattern. Only these review doc
 
 For pre-commit synchronization, the source documents must be tracked as regular files in the consuming repository. Staged mode reads their Git contents; it does not import files from an external or symlinked skill installation.
 
-After [installing the package](#install), add these scripts to the consuming repository's `package.json`:
-
-```json
-{
-  "scripts": {
-    "instructions:sync": "rules-sync --pattern '.agents/skills/*/codereview.md' --output CODE_REVIEW_GUIDELINES.md",
-    "instructions:stage": "pnpm instructions:sync --staged",
-    "instructions:check": "pnpm instructions:sync --check"
-  }
-}
-```
-
-Generate the initial document from your working files:
+After [installing the package](#install), use the same existing-hook setup described above. Add this call after lint-staged or other tasks that edit source documents, outside file-pattern callbacks:
 
 ```sh
-pnpm instructions:sync
-```
-
-Add the following to your existing `.husky/pre-commit`, after any tasks that edit source documents. Run it on every commit, outside lint-staged's file-pattern callbacks:
-
-```sh
-pnpm instructions:stage
+pnpm exec rules-sync --pattern '.agents/skills/*/codereview.md' --output CODE_REVIEW_GUIDELINES.md --staged
 ```
 
 Edit and stage the skill's `codereview.md`, then commit as usual. The hook regenerates and stages `CODE_REVIEW_GUIDELINES.md` from the same staged snapshot, including additions, renames, and deletions. Edit the skill files rather than the generated document. Keep both sources and generated output committed in the consuming repository.
 
-In CI, run `pnpm instructions:check` after checkout and dependency installation to reject a stale generated document. See [pre-commit synchronization](#pre-commit-synchronization) for partial staging and other hook managers.
+For initial generation from working files, omit `--staged`. For the CI freshness check, replace it with `--check`. See [pre-commit synchronization](#pre-commit-synchronization) for partial staging and hook integration.
 
 To have CodeRabbit apply this document across your repository, add this mapping to `.coderabbit.yaml`:
 
@@ -143,7 +113,7 @@ knowledge_base:
         applyTo: '**/*'
 ```
 
-For [GitHub Copilot](#github-copilot), change `--output CODE_REVIEW_GUIDELINES.md` in `instructions:sync` to `--output .github/copilot-instructions.md`. CodeRabbit can read that same generated file using the [shared-file mapping below](#coderabbit), so both reviewers can consume one document. Keep the `.agents/skills/*/codereview.md` input pattern in either setup.
+For [GitHub Copilot](#github-copilot), change `--output CODE_REVIEW_GUIDELINES.md` in the command above to `--output .github/copilot-instructions.md`, using the same output for the hook and CI. CodeRabbit can read that same generated file using the [shared-file mapping below](#coderabbit), so both reviewers can consume one document. Keep the `.agents/skills/*/codereview.md` input pattern in either setup.
 
 The examples contain no private skill content. Your actual skill files and generated rules stay in your consuming repository; they do not need to be published with this utility.
 
@@ -155,7 +125,7 @@ The examples contain no private skill content. Your actual skill files and gener
 pnpm exec rules-sync --pattern 'rules/*/instructions.md' --output .github/copilot-instructions.md --staged
 ```
 
-Use this output path in the package scripts and pre-commit command above. Commit the source documents and generated file. The generated file contains their full text, so Copilot can read the rules directly.
+Use this output path in the pre-commit and CI commands above. Commit the source documents and generated file. The generated file contains their full text, so Copilot can read the rules directly.
 
 For pull-request reviews, check **Settings → Copilot → Code review → Use custom instructions when reviewing pull requests**. GitHub documents the reviewing user's instruction setting as relevant too. See [using Copilot code review](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review).
 
