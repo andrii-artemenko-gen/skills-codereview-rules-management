@@ -2,7 +2,7 @@
 
 Combine Markdown instruction files into a generated document and keep it synchronized at commit time. The implementation is a generic Markdown utility with no runtime dependencies. It includes no bundled skill library or organization-specific rules.
 
-Requires **Node.js 22.20+**. Staged mode also requires Git and must run from the repository root.
+Requires **Node.js 22.23.4 or newer 22.x, or 24.22.1 or newer 24.x**. Run `nvm use` to select the local default. Staged mode also requires Git and must run from the repository root.
 
 ## Install
 
